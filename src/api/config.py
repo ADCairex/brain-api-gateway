@@ -1,9 +1,9 @@
 from pydantic_settings import BaseSettings
 
 PUBLIC_PATHS = [
-    "/auth/login",
-    "/auth/register",
-    "/auth/refresh",
+    "/login",
+    "/register",
+    "/refresh",
 ]
 
 SERVICE_MAP = {

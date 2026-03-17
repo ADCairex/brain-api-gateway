@@ -16,11 +16,12 @@ app.add_middleware(
 )
 
 
-def _resolve_target(path: str) -> str | None:
-    """Return the upstream base URL for the given path, or None if no match."""
+def _resolve_target(path: str) -> tuple[str, str] | None:
+    """Return (upstream_url, stripped_path) for the given path, or None if no match."""
     for prefix, service_url in SERVICE_MAP.items():
         if path.startswith(prefix):
-            return service_url + path
+            remainder = path[len(prefix):]
+            return service_url + remainder, remainder
     return None
 
 
@@ -28,16 +29,18 @@ def _resolve_target(path: str) -> str | None:
 async def gateway(path: str, request: Request) -> Response:
     full_path = f"/{path}"
 
-    target_url = _resolve_target(full_path)
-    if target_url is None:
+    result = _resolve_target(full_path)
+    if result is None:
         return Response(
             content='{"detail":"Not found"}',
             status_code=404,
             media_type="application/json",
         )
 
+    target_url, stripped_path = result
+
     user_id: str | None = None
-    if full_path not in PUBLIC_PATHS:
+    if stripped_path not in PUBLIC_PATHS:
         payload = validate_token(request)
         user_id = payload.get("sub")
 
