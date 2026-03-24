@@ -12,4 +12,4 @@ import os
 # Inject a deterministic secret before any src module is imported.
 # pydantic-settings reads SECRET_KEY when config.py is first imported, so this
 # must be set here — not inside a fixture — to avoid an ImportError.
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-unit-tests-only")
+os.environ["SECRET_KEY"] = "test-secret-key-for-unit-tests-only"
