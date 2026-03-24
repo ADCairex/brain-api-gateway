@@ -9,7 +9,7 @@ app = FastAPI(title="API Gateway", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins.split(","),
+    allow_origins=["https://cairex-brain.com", "https://www.cairex-brain.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,7 +20,7 @@ def _resolve_target(path: str) -> tuple[str, str] | None:
     """Return (upstream_url, stripped_path) for the given path, or None if no match."""
     for prefix, service_url in SERVICE_MAP.items():
         if path.startswith(prefix):
-            remainder = path[len(prefix):]
+            remainder = path[len(prefix) :]
             return service_url + remainder, remainder
     return None
 
