@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .auth import validate_token
-from .config import PUBLIC_STRIPPED_PATHS, SERVICE_MAP, settings
+from .config import PUBLIC_STRIPPED_PATHS, SERVICE_MAP
 from .limiter import limiter
 from .proxy import proxy_request
 
