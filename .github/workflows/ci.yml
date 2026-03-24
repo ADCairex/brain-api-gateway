@@ -26,4 +26,9 @@ jobs:
         run: uv sync --frozen
 
       - name: Run lint
-        run: uv run ruff check src/
+        run: uv run ruff check src/ tests/
+
+      - name: Run tests
+        run: uv run pytest -v
+        env:
+          SECRET_KEY: test-secret-key-for-ci
