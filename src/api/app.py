@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .auth import validate_token
-from .config import PUBLIC_PATHS, SERVICE_MAP, settings
+from .config import PUBLIC_STRIPPED_PATHS, SERVICE_MAP, settings
 from .limiter import limiter
 from .proxy import proxy_request
 
@@ -62,6 +62,14 @@ async def auth_register(request: Request) -> Response:
     return await proxy_request(request, target_url, user_id=None)
 
 
+@app.post("/auth/refresh")
+@limiter.limit("10/minute")
+async def auth_refresh(request: Request) -> Response:
+    """Proxy /auth/refresh with a strict 10 req/min limit per IP."""
+    target_url, _ = _resolve_target("/auth/refresh")  # type: ignore[misc]
+    return await proxy_request(request, target_url, user_id=None)
+
+
 # ---------------------------------------------------------------------------
 # Generic catch-all proxy — global limit (100/minute) via default_limits.
 # ---------------------------------------------------------------------------
@@ -83,7 +91,7 @@ async def gateway(path: str, request: Request) -> Response:
     target_url, stripped_path = result
 
     user_id: str | None = None
-    if stripped_path not in PUBLIC_PATHS:
+    if stripped_path not in PUBLIC_STRIPPED_PATHS:
         payload = validate_token(request)
         user_id = payload.get("sub")
 
