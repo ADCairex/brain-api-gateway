@@ -27,9 +27,7 @@ async def proxy_request(
 
     # Forward upstream response back to the caller, stripping hop-by-hop headers
     excluded = {"transfer-encoding", "connection"}
-    response_headers = {
-        k: v for k, v in upstream.headers.items() if k.lower() not in excluded
-    }
+    response_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in excluded}
 
     return Response(
         content=upstream.content,

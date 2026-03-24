@@ -10,7 +10,7 @@ PUBLIC_STRIPPED_PATHS = [
 ]
 
 SERVICE_MAP = {
-    "/auth":    "http://brain-auth-service:8001",
+    "/auth": "http://brain-auth-service:8001",
     "/finance": "http://brain-finance-service:8002",
 }
 
