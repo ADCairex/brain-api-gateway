@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings
 
-PUBLIC_PATHS = [
+# These are paths AFTER the service prefix is stripped by _resolve_target().
+# For example, the full request path /auth/refresh becomes /refresh here.
+# Do NOT add full paths like /auth/login — they will never match.
+PUBLIC_STRIPPED_PATHS = [
     "/login",
     "/register",
     "/refresh",
