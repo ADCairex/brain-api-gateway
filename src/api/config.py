@@ -12,6 +12,7 @@ PUBLIC_STRIPPED_PATHS = [
 SERVICE_MAP = {
     "/auth": "http://brain-auth-service:8001",
     "/finance": "http://brain-finance-service:8002",
+    "/calendar": "http://brain-calendar-service:8003",
 }
 
 
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     secret_key: str
     service_auth_url: str = "http://brain-auth-service:8001"
     service_finance_url: str = "http://brain-finance-service:8002"
+    service_calendar_url: str = "http://brain-calendar-service:8003"
     port: int = 8000
     allowed_origins: str = "http://localhost:3000"
     environment: str = "development"
