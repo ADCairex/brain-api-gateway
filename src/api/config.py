@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings
 
 # These are paths AFTER the service prefix is stripped by _resolve_target().
@@ -12,6 +14,7 @@ PUBLIC_STRIPPED_PATHS = [
 SERVICE_MAP = {
     "/auth": "http://brain-auth-service:8001",
     "/finance": "http://brain-finance-service:8002",
+    "/calendar": "http://brain-calendar-service:8003",
 }
 
 
@@ -19,8 +22,9 @@ class Settings(BaseSettings):
     secret_key: str
     service_auth_url: str = "http://brain-auth-service:8001"
     service_finance_url: str = "http://brain-finance-service:8002"
+    service_calendar_url: str = "http://brain-calendar-service:8003"
     port: int = 8000
-    allowed_origins: str = "http://localhost:3000"
+    allowed_origins: str = os.getenv("ALLOWED_ORIGINS", "")
     environment: str = "development"
 
     model_config = {"env_file": ".env"}
