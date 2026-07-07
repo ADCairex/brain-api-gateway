@@ -96,6 +96,33 @@ class TestFinanceRouteResolution:
 
 
 # ---------------------------------------------------------------------------
+# OCR service routing
+# ---------------------------------------------------------------------------
+
+
+class TestOcrRouteResolution:
+    """_resolve_target maps /ocr/* paths to brain-ocr-service:8004."""
+
+    def test_ocr_exact_prefix_resolves_to_ocr_service_root(self):
+        """The exact /ocr prefix is a valid authenticated upstream root path."""
+        result = _resolve_target("/ocr")
+
+        assert result is not None
+        target_url, stripped_path = result
+        assert target_url == "http://brain-ocr-service:8004"
+        assert stripped_path == ""
+
+    def test_ocr_analyze_resolves_to_ocr_service(self):
+        """/ocr/api/transactions/analyze should strip /ocr and forward to OCR."""
+        result = _resolve_target("/ocr/api/transactions/analyze")
+
+        assert result is not None
+        target_url, stripped_path = result
+        assert target_url == "http://brain-ocr-service:8004/api/transactions/analyze"
+        assert stripped_path == "/api/transactions/analyze"
+
+
+# ---------------------------------------------------------------------------
 # Stripped path correctness
 # ---------------------------------------------------------------------------
 
@@ -129,7 +156,7 @@ class TestStrippedPath:
 
     def test_stripped_path_starts_with_slash(self):
         """Stripped path must always start with / for valid upstream forwarding."""
-        for path in ["/auth/login", "/auth/register", "/finance/transactions"]:
+        for path in ["/auth/login", "/auth/register", "/finance/transactions", "/ocr/api/transactions/analyze"]:
             result = _resolve_target(path)
             assert result is not None, f"Expected a match for {path!r}"
             _, stripped_path = result
@@ -177,37 +204,42 @@ class TestPrefixBoundaryBehavior:
     """
     Document the exact prefix-matching semantics of _resolve_target.
 
-    The implementation uses str.startswith(), which means a path like
-    /authentication DOES match the /auth prefix because "authentication"
-    starts with "auth".  These tests document this known behaviour so that
-    any accidental change is immediately caught.
+    A service prefix matches only as an exact path or when followed by a slash.
+    Near-prefix paths must not be treated as upstream URLs.
     """
 
-    def test_auth_prefix_matches_longer_word_starting_with_auth(self):
-        """/authentication starts with /auth — current impl resolves it to auth-service.
-
-        This is a documented behaviour of the simple startswith() check.
-        The stripped path would be 'entication' (without leading slash).
-        If the routing logic is ever tightened to require a slash boundary,
-        this test should be updated accordingly.
-        """
+    def test_auth_near_prefix_longer_word_returns_none(self):
+        """/authentication starts with /auth textually but is not an /auth route."""
         result = _resolve_target("/authentication")
 
-        # Current implementation: startswith("/auth") → matches
-        assert result is not None
-        target_url, stripped_path = result
-        assert target_url == "http://brain-auth-service:8001entication"
-        assert stripped_path == "entication"
+        assert result is None
 
-    def test_finance_prefix_matches_longer_word_starting_with_finance(self):
-        """/finances starts with /finance — current impl resolves it to finance-service."""
+    def test_finance_near_prefix_longer_word_returns_none(self):
+        """/finances starts with /finance textually but is not a /finance route."""
         result = _resolve_target("/finances")
 
-        # Current implementation: startswith("/finance") → matches
+        assert result is None
+
+    def test_ocr_near_prefix_longer_word_returns_none(self):
+        """/ocrx must not resolve to OCR just because it starts with /ocr."""
+        result = _resolve_target("/ocrx/api/transactions/analyze")
+
+        assert result is None
+
+    def test_ocr_at_sign_near_prefix_returns_none(self):
+        """/ocr@evil.example must not become a malformed OCR upstream URL."""
+        result = _resolve_target("/ocr@evil.example/path")
+
+        assert result is None
+
+    def test_ocr_slash_boundary_still_resolves(self):
+        """Valid /ocr/... paths still strip /ocr and forward to OCR."""
+        result = _resolve_target("/ocr/api/transactions/analyze")
+
         assert result is not None
         target_url, stripped_path = result
-        assert target_url == "http://brain-finance-service:8002s"
-        assert stripped_path == "s"
+        assert target_url == "http://brain-ocr-service:8004/api/transactions/analyze"
+        assert stripped_path == "/api/transactions/analyze"
 
     def test_partial_prefix_does_not_match(self):
         """/aut does not start with /auth — should return None."""
