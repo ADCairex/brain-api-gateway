@@ -1,6 +1,14 @@
 import httpx
 from fastapi import Request, Response
 
+from .config import settings
+
+
+def _upstream_timeout(target_url: str) -> float:
+    if target_url.startswith(settings.service_ocr_url):
+        return settings.service_ocr_timeout_seconds
+    return settings.proxy_timeout_seconds
+
 
 async def proxy_request(
     request: Request,
@@ -8,14 +16,14 @@ async def proxy_request(
     user_id: str | None = None,
 ) -> Response:
     """Forward the incoming request to target_url, optionally injecting X-User-Id."""
-    headers = dict(request.headers)
-    headers.pop("host", None)
+    headers = {key: value for key, value in request.headers.items() if key.lower() not in {"host", "x-user-id"}}
     if user_id is not None:
         headers["X-User-Id"] = user_id
 
     body = await request.body()
+    timeout = _upstream_timeout(target_url)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         upstream = await client.request(
             method=request.method,
             url=target_url,

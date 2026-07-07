@@ -31,6 +31,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
+from src.api.config import Settings, settings
 from src.api.limiter import limiter
 
 # Must match the value injected by conftest.py.
@@ -121,7 +122,7 @@ def auth_client():
 
 class TestPublicRoutes:
     """
-    /auth/login, /auth/register, and /auth/refresh are in PUBLIC_STRIPPED_PATHS.
+    /auth/login, /auth/register, and /auth/refresh are public auth paths.
     Requests to these endpoints must reach the proxy even without a cookie.
     """
 
@@ -165,7 +166,7 @@ class TestPublicRoutes:
 
 class TestProtectedRoutes:
     """
-    Routes outside PUBLIC_STRIPPED_PATHS require a valid JWT in the
+    Routes outside public auth paths require a valid JWT in the
     access_token cookie.  Missing or invalid tokens → 401.
     """
 
@@ -181,6 +182,15 @@ class TestProtectedRoutes:
         with _patch_proxy() as mock_http:
             client.get("/finance/transactions")
 
+        mock_http.request.assert_not_called()
+
+    @pytest.mark.parametrize("path", ["/ocr/login", "/finance/login", "/calendar/login"])
+    def test_login_named_paths_outside_auth_service_require_token(self, client, path):
+        """Only auth-service login is public; same stripped path elsewhere is protected."""
+        with _patch_proxy() as mock_http:
+            response = client.post(path, json={})
+
+        assert response.status_code == 401
         mock_http.request.assert_not_called()
 
     def test_protected_route_with_valid_token_reaches_proxy(self, auth_client):
@@ -259,6 +269,121 @@ class TestProtectedRoutes:
             client.post("/auth/login", json={})
 
         assert "X-User-Id" not in captured
+
+
+class TestOcrRoutes:
+    """OCR routes remain gateway-authenticated and preserve upload proxying."""
+
+    def test_ocr_route_requires_auth(self, client):
+        with _patch_proxy() as mock_http:
+            response = client.post("/ocr/api/transactions/analyze")
+
+        assert response.status_code == 401
+        mock_http.request.assert_not_called()
+
+    def test_ocr_route_injects_user_id_header(self, auth_client):
+        captured: dict = {}
+
+        async def capture_request(*args, **kwargs):
+            captured.update(kwargs)
+            return _make_mock_upstream()
+
+        with patch("src.api.proxy.httpx.AsyncClient") as mock_cls:
+            instance = mock_cls.return_value.__aenter__.return_value
+            instance.request = capture_request
+            response = auth_client.post("/ocr/api/transactions/analyze")
+
+        assert response.status_code == 200
+        assert captured["url"] == "http://brain-ocr-service:8004/api/transactions/analyze"
+        assert captured["headers"]["X-User-Id"] == "user-123"
+
+    @pytest.mark.parametrize("header_name", ["x-user-id", "X-User-Id"])
+    def test_spoofed_user_id_header_is_removed_before_gateway_injection(self, auth_client, header_name):
+        captured: dict = {}
+
+        async def capture_request(*args, **kwargs):
+            captured.update(kwargs)
+            return _make_mock_upstream()
+
+        with patch("src.api.proxy.httpx.AsyncClient") as mock_cls:
+            instance = mock_cls.return_value.__aenter__.return_value
+            instance.request = capture_request
+            response = auth_client.post(
+                "/ocr/api/transactions/analyze",
+                headers={header_name: "attacker-controlled-user"},
+            )
+
+        assert response.status_code == 200
+        user_id_headers = [value for key, value in captured["headers"].items() if key.lower() == "x-user-id"]
+        assert user_id_headers == ["user-123"]
+
+    def test_ocr_route_uses_ocr_timeout(self, auth_client):
+        with patch("src.api.proxy.httpx.AsyncClient") as mock_cls:
+            instance = mock_cls.return_value.__aenter__.return_value
+            instance.request = AsyncMock(return_value=_make_mock_upstream())
+            response = auth_client.post("/ocr/api/transactions/analyze")
+
+        assert response.status_code == 200
+        assert mock_cls.call_args.kwargs["timeout"] == settings.service_ocr_timeout_seconds
+
+    def test_finance_route_uses_default_proxy_timeout(self, auth_client):
+        with patch("src.api.proxy.httpx.AsyncClient") as mock_cls:
+            instance = mock_cls.return_value.__aenter__.return_value
+            instance.request = AsyncMock(return_value=_make_mock_upstream())
+            response = auth_client.get("/finance/transactions")
+
+        assert response.status_code == 200
+        assert mock_cls.call_args.kwargs["timeout"] == settings.proxy_timeout_seconds
+
+    def test_ocr_multipart_request_body_passes_through(self, auth_client):
+        captured: dict = {}
+
+        async def capture_request(*args, **kwargs):
+            captured.update(kwargs)
+            return _make_mock_upstream()
+
+        with patch("src.api.proxy.httpx.AsyncClient") as mock_cls:
+            instance = mock_cls.return_value.__aenter__.return_value
+            instance.request = capture_request
+            response = auth_client.post(
+                "/ocr/api/transactions/analyze",
+                files={"file": ("statement.pdf", b"%PDF-1.4 fake", "application/pdf")},
+                data={"categories_json": '["food"]'},
+            )
+
+        assert response.status_code == 200
+        assert captured["headers"]["content-type"].startswith("multipart/form-data; boundary=")
+        assert b"%PDF-1.4 fake" in captured["content"]
+        assert b"categories_json" in captured["content"]
+
+
+class TestTimeoutSettings:
+    """Proxy timeout environment values are bounded to avoid unsafe hangs."""
+
+    def test_timeout_settings_accept_reasonable_upper_bound(self):
+        settings_obj = Settings(
+            secret_key=TEST_SECRET,
+            proxy_timeout_seconds=300,
+            service_ocr_timeout_seconds=300,
+        )
+
+        assert settings_obj.proxy_timeout_seconds == 300
+        assert settings_obj.service_ocr_timeout_seconds == 300
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("proxy_timeout_seconds", 0),
+            ("proxy_timeout_seconds", -1),
+            ("proxy_timeout_seconds", 301),
+            ("service_ocr_timeout_seconds", 0),
+            ("service_ocr_timeout_seconds", -1),
+            ("service_ocr_timeout_seconds", 301),
+        ],
+    )
+    def test_timeout_settings_reject_unbounded_or_non_positive_values(self, field, value):
+        with pytest.raises(ValueError):
+            Settings(secret_key=TEST_SECRET, **{field: value})
 
 
 # ---------------------------------------------------------------------------

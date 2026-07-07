@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .auth import validate_token
-from .config import PUBLIC_STRIPPED_PATHS, SERVICE_MAP
+from .config import PUBLIC_AUTH_PATHS, SERVICE_MAP
 from .limiter import limiter
 from .proxy import proxy_request
 
@@ -33,7 +33,7 @@ app.add_middleware(
 def _resolve_target(path: str) -> tuple[str, str] | None:
     """Return (upstream_url, stripped_path) for the given path, or None if no match."""
     for prefix, service_url in SERVICE_MAP.items():
-        if path.startswith(prefix):
+        if path == prefix or path.startswith(f"{prefix}/"):
             remainder = path[len(prefix) :]
             return service_url + remainder, remainder
     return None
@@ -88,10 +88,10 @@ async def gateway(path: str, request: Request) -> Response:
             media_type="application/json",
         )
 
-    target_url, stripped_path = result
+    target_url, _ = result
 
     user_id: str | None = None
-    if stripped_path not in PUBLIC_STRIPPED_PATHS:
+    if full_path not in PUBLIC_AUTH_PATHS:
         payload = validate_token(request)
         user_id = payload.get("sub")
 
